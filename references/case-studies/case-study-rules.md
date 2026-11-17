@@ -5,7 +5,7 @@ One case study lives at `case-studies/<component>/<cve_id>/README.md`. CVE id fo
 Read `case-study-template.md` before creating or changing a case-study README. The template fixes the ordered frontmatter keys and sections. Every value is nonempty.
 
 - `description`, `weakness`, `impact`: as `../findings/finding-rules.md` requires.
-- `severity`: `low`, `medium`, `high`, or `critical`.
+- `severity`: `low`, `medium`, `high`, or `critical`, picked with the severity table in the finding rules.
 - `deterministic`: from the cited patch, advisory, or reproduction. `unknown` only when sources do not establish trigger type.
 - `cve-id`: exact published id.
 

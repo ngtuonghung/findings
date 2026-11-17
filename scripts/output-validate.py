@@ -85,20 +85,9 @@ DATE_RE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
 SEPARATOR_RE = re.compile(r"^:?-+:?$")
 
 PRIMITIVE_LABELS = ["Additional preconditions:", "Reproduction steps:",
-                    "Triggering path:", "Impact:"]
-
-COLUMNS = {
-    "case-study": {"date": 0, "id": 1, "weakness": 2, "severity": 3,
-                   "impact": 4, "deterministic": 5, "root": 6, "path": 7},
-    "finding": {"date": 0, "weakness": 1, "severity": 2, "impact": 3,
-                "deterministic": 4, "root": 5, "path": 6, "verdict": 7},
-}
-HEADERS = {
-    "case-study": ["Date", "CVE", "Weakness", "Severity", "Impact",
-                   "Deterministic", "Root Cause summarize", "Path"],
-    "finding": ["Date", "Weakness", "Severity", "Impact", "Deterministic",
-                "Root Cause summarize", "Path", "Verdict"],
-}
+                    "Triggering path:", "Gate checks:", "Impact:"]
+BLOCKED_LABELS = ["Triggering path:", "Impact:"]
+BLOCKED_VERDICTS = ["static-false", "dynamic-false"]
 
 WEAKNESS = ("CWE-79 - Improper Neutralization of Input During Web Page "
             "Generation ('Cross-site Scripting')")
@@ -166,6 +155,14 @@ def section_lines(lines):
 
 def section_list(lines):
     return [name for _, name in section_lines(lines)]
+
+
+@functools.lru_cache(maxsize=None)
+def index_header(kind):
+    for raw in TEMPLATES[kind].read_text(encoding="utf-8-sig").splitlines():
+        if raw.startswith("| Date"):
+            return split_row(raw)
+    return []
 
 
 @functools.lru_cache(maxsize=None)
@@ -327,51 +324,51 @@ def next_heading(lines, start, visible):
     return len(lines)
 
 
-def check_primitives(lines, kind):
+def check_labels(lines, start, end, visible, labels):
+    out = []
+    title = lines[start].strip()
+    stripped = [lines[index].strip() for index in visible
+                if start <= index < end]
+    positions = [stripped.index(label) if label in stripped else -1
+                 for label in labels]
+    for label, position in zip(labels, positions):
+        if position < 0:
+            out.append(violation("PR-002", start + 1,
+                                 "'%s' is missing label '%s'" % (title, label)))
+    found = [position for position in positions if position >= 0]
+    if found != sorted(found):
+        out.append(violation("PR-003", start + 1,
+                             "'%s' has labels out of order" % title))
+    return out
+
+
+def check_primitives(lines, kind, verdict):
     if kind == "unknown":
         return []
-    out = []
     visible = visible_indexes(lines)
     starts = [index for index in visible
               if lines[index].startswith("### Primitive")]
-    if not starts:
-        blocked = [index for index in visible
-                   if lines[index].strip() == "Blocked path:"
-                   or re.fullmatch(r"### Blocked path\b.*",
-                                   lines[index].strip())]
-        if not blocked:
-            out.append(violation(
-                "PR-001", 1,
-                "no '### Primitive N' subsection and no 'Blocked path:' block"))
-        else:
-            end = next_heading(lines, blocked[0], visible)
-            segment = [lines[index].strip() for index in visible
-                       if blocked[0] <= index < end]
-            if "Impact:" not in segment:
-                out.append(violation("PR-003", blocked[0] + 1,
-                                     "'Blocked path' block has no 'Impact:' label"))
-        return out
-
+    blocked = [index for index in visible
+               if re.fullmatch(r"### Blocked path\b.*", lines[index].strip())]
+    if not starts and not blocked:
+        return [violation("PR-001", 1, "no '### Primitive N' subsection and "
+                          "no '### Blocked path' subsection")]
+    out = []
+    if starts and blocked:
+        out.append(violation("PR-004", blocked[0] + 1,
+                             "'### Blocked path' cannot sit beside a "
+                             "'### Primitive N' subsection"))
+    elif blocked and kind == "finding" and verdict not in BLOCKED_VERDICTS:
+        out.append(violation("PR-004", blocked[0] + 1,
+                             "'### Blocked path' is only for verdict %s, "
+                             "not '%s'" % (" or ".join(BLOCKED_VERDICTS),
+                                           verdict)))
     for start in starts:
-        end = next_heading(lines, start, visible)
-        segment = [lines[index] for index in visible if start <= index < end]
-        stripped = [line.strip() for line in segment]
-        title = segment[0].strip()
-        positions = []
-        for label in PRIMITIVE_LABELS:
-            try:
-                positions.append(stripped.index(label))
-            except ValueError:
-                positions.append(-1)
-        for label, position in zip(PRIMITIVE_LABELS, positions):
-            if position < 0:
-                out.append(violation("PR-002", start + 1,
-                                     "'%s' is missing label '%s'"
-                                     % (title, label)))
-        found = [position for position in positions if position >= 0]
-        if found != sorted(found):
-            out.append(violation("PR-003", start + 1,
-                                 "'%s' has labels out of order" % title))
+        out += check_labels(lines, start, next_heading(lines, start, visible),
+                            visible, PRIMITIVE_LABELS)
+    for start in blocked:
+        out += check_labels(lines, start, next_heading(lines, start, visible),
+                            visible, BLOCKED_LABELS)
     return out
 
 
@@ -486,9 +483,9 @@ def read_frontmatter(path):
 
 def check_index(path, lines, is_finding):
     out = []
-    kind = "finding" if is_finding else "case-study"
-    layout = COLUMNS[kind]
-    expected_header = HEADERS[kind]
+    expected_header = index_header("finding-index" if is_finding
+                                   else "case-index")
+    layout = {name: index for index, name in enumerate(expected_header)}
     expected_columns = len(expected_header)
     template = ("references/findings/finding-index-template.md" if is_finding
                 else "references/case-studies/case-study-index-template.md")
@@ -526,18 +523,18 @@ def check_index(path, lines, is_finding):
                                  "Row has %d columns, expected %d. See %s"
                                  % (len(cells), expected_columns, template)))
             continue
-        date = cells[layout["date"]]
-        if (cells[layout["severity"]] in SEVERITY_ORDER
+        date = cells[layout["Date"]]
+        if (cells[layout["Severity"]] in SEVERITY_ORDER
                 and DATE_RE.match(date)):
             day, month, year = date.split("-")
             newest = -int(year + month + day)
             sort_keys.append((line, (SEVERITY_ORDER.index(
-                cells[layout["severity"]]), newest)))
-        if not DATE_RE.match(cells[layout["date"]]):
+                cells[layout["Severity"]]), newest)))
+        if not DATE_RE.match(cells[layout["Date"]]):
             out.append(violation("IX-002", line,
                                  "date '%s' is not dd-mm-yyyy"
-                                 % cells[layout["date"]]))
-        link = re.fullmatch(r"\[[^\]]+\]\(([^)]+)\)", cells[layout["path"]])
+                                 % cells[layout["Date"]]))
+        link = re.fullmatch(r"\[[^\]]+\]\(([^)]+)\)", cells[layout["Path"]])
         if not link:
             out.append(violation("IX-005", line,
                                  "Path cell must be one markdown link. See %s"
@@ -573,14 +570,14 @@ def check_index(path, lines, is_finding):
             out.append(violation("IX-009", line, "row links %s twice"
                                  % "/".join(parts)))
         linked[target] = line
-        if is_finding and cells[layout["date"]] != parts[0]:
+        if is_finding and cells[layout["Date"]] != parts[0]:
             out.append(violation("IX-002", line,
                                  "date '%s' does not match path folder '%s'"
-                                 % (cells[layout["date"]], parts[0])))
-        if not is_finding and cells[layout["id"]].lower() != parts[0].lower():
+                                 % (cells[layout["Date"]], parts[0])))
+        if not is_finding and cells[layout["CVE"]].lower() != parts[0].lower():
             out.append(violation("IX-004", line,
                                  "CVE cell '%s' does not match path folder '%s'"
-                                 % (cells[layout["id"]], parts[0])))
+                                 % (cells[layout["CVE"]], parts[0])))
 
         front = read_frontmatter(target)
         if not front:
@@ -593,19 +590,19 @@ def check_index(path, lines, is_finding):
         if expected_severity not in allowed:
             out.append(violation("IX-008", line,
                                  "linked README has no valid severity"))
-        elif cells[layout["severity"]] != expected_severity:
+        elif cells[layout["Severity"]] != expected_severity:
             out.append(violation("IX-003", line,
                                  "severity cell '%s' does not match '%s'"
-                                 % (cells[layout["severity"]],
+                                 % (cells[layout["Severity"]],
                                     expected_severity)))
 
-        fields = [("weakness", layout["weakness"]),
-                  ("impact", layout["impact"]),
-                  ("deterministic", layout["deterministic"])]
+        fields = [("weakness", layout["Weakness"]),
+                  ("impact", layout["Impact"]),
+                  ("deterministic", layout["Deterministic"])]
         if is_finding:
-            fields.append(("verdict", layout["verdict"]))
+            fields.append(("verdict", layout["Verdict"]))
         else:
-            fields.append(("cve-id", layout["id"]))
+            fields.append(("cve-id", layout["CVE"]))
         for field, column in fields:
             value = front.get(field)
             if value is None:
@@ -616,7 +613,7 @@ def check_index(path, lines, is_finding):
                                      "%s cell '%s' does not match '%s'"
                                      % (field, cells[column], value)))
 
-        root = cells[layout["root"]]
+        root = cells[layout["Root Cause summarize"]]
         if not root:
             out.append(violation("IX-004", line,
                                  "Root Cause summarize cell is empty"))
@@ -673,7 +670,7 @@ def check(path):
     errors = ascii_errors
     errors += check_frontmatter(Path(path), pairs, kind, cwes, keys)
     errors += check_sections(lines, required)
-    errors += check_primitives(lines, kind)
+    errors += check_primitives(lines, kind, values.get("verdict"))
     errors += check_fences(lines)
     errors += check_banned(lines, exempt)
     errors += check_references(lines)
@@ -698,7 +695,7 @@ def strip_index_rows(text):
                      if not line.lstrip().startswith("| <")) + "\n"
 
 
-def make_valid(kind):
+def make_valid(kind, blocked=False):
     text = TEMPLATES[kind].read_text(encoding="utf-8-sig")
     lines = text.splitlines()
     pairs, status, body_start = parse_frontmatter(lines)
@@ -711,8 +708,18 @@ def make_valid(kind):
             value = defaults.get(key, "x")
         out.append("%s: %s" % (key, value))
     out.append("---")
-    body = [re.sub(r"<[^>\n]*>", "x", line) for line in lines[body_start:]]
-    out.extend(body)
+    skip = False
+    for line in lines[body_start:]:
+        # The template shows both Primitive and Blocked path; keep one.
+        if line.startswith("### Primitive"):
+            skip = blocked
+        elif line.startswith("// (if the evidence blocks"):
+            skip = not blocked
+            continue
+        elif line.startswith("## "):
+            skip = False
+        if not skip:
+            out.append(re.sub(r"<[^>\n]*>", "x", line))
     return "\n".join(out) + "\n"
 
 
@@ -884,12 +891,9 @@ def selftest():
                [("ST-003", "unexpected section '## Extra'")])
 
         expect("finding-no-primitive.md",
-               replace(replace(finding,
-                               "### Primitive 1: x",
-                               "### Not A Primitive"),
-                       "Blocked path:", "Blocked route:"),
+               replace(finding, "### Primitive 1: x", "### Not A Primitive"),
                [("PR-001", "no '### Primitive N' subsection and no "
-                 "'Blocked path:' block")])
+                 "'### Blocked path' subsection")])
         expect("finding-missing-label.md",
                replace(finding, "Reproduction steps:\n", "Steps:\n"),
                [("PR-002", "'### Primitive 1: x' is "
@@ -901,28 +905,36 @@ def selftest():
         expect("finding-label-order.md", label_swap,
                [("PR-003", "'### Primitive 1: x' has "
                  "labels out of order")])
-        expect("finding-blocked-ok.md",
-               replace(finding, "### Primitive 1: x",
-                       "### Blocked path"),
-               [])
+        blocked = make_valid("finding", blocked=True)
+        expect("finding-blocked-ok.md", blocked, [])
         expect("finding-blocked-bad.md",
-               replace(replace(finding,
-                               "### Primitive 1: x",
-                               "### Blocked path"),
-                       "Impact:\n", "Effect:\n"),
-               [("PR-003", "'Blocked path' block has no 'Impact:' label")])
-        fenced_blocked = replace(
-            finding, "## Duplication Check",
-            "```\n### Blocked path\n```\n\n## Duplication Check")
-        fenced_blocked = replace(fenced_blocked, "### Primitive 1: x",
-                                 "### Not A Primitive")
-        fenced_blocked = replace(fenced_blocked, "Blocked path:",
-                                 "Blocked route:")
-        expect("finding-fenced-blocked.md", fenced_blocked,
+               replace(blocked, "Impact:\n", "Effect:\n"),
+               [("PR-002", "'### Blocked path' is missing label 'Impact:'")])
+        expect("finding-blocked-confirmed.md",
+               replace(pending, "### Primitive 1: x",
+                       "### Blocked path").replace(
+                   "verdict: static-true-dynamic-pending", "verdict: confirmed"),
+               [("PR-004", "'### Blocked path' is only for verdict "
+                 "static-false or dynamic-false, not 'confirmed'")])
+        expect("finding-blocked-and-primitive.md",
+               replace(finding, "## Duplication Check",
+                       "### Blocked path\n\nTriggering path:\n\nImpact:\n\n"
+                       "## Duplication Check"),
+               [("PR-004", "'### Blocked path' cannot sit beside a "
+                 "'### Primitive N' subsection")])
+        expect("finding-no-gate-checks.md",
+               replace(finding, "Gate checks:\n", ""),
+               [("PR-002", "'### Primitive 1: x' is missing label "
+                 "'Gate checks:'")])
+        expect("finding-fenced-blocked.md",
+               replace(replace(finding, "## Duplication Check",
+                               "```\n### Blocked path\n```\n\n"
+                               "## Duplication Check"),
+                       "### Primitive 1: x", "### Not A Primitive"),
                [("PR-001", "no '### Primitive N' subsection and no "
-                 "'Blocked path:' block")])
+                 "'### Blocked path' subsection")])
         expect("finding-fence.md", finding + "\n```\n",
-               [("CD-001", "unbalanced code fence: 5 fence lines")])
+               [("CD-001", "unbalanced code fence: 3 fence lines")])
         expect("finding-banned.md",
                replace(finding, "## References",
                        "This is proven.\n\n## References"),
@@ -1017,7 +1029,7 @@ def selftest():
                finding_index(finding_row).replace("| Verdict |", "| Confidence |"),
                [("IX-007", "Header must be: %s. See "
                  "references/findings/finding-index-template.md"
-                 % " | ".join(HEADERS["finding"]))])
+                 % " | ".join(index_header("finding-index")))])
         expect("findings/component/README.md",
                finding_index(replace(finding_row, "| 12-08-2026 |",
                                      "| 13-08-2026 |")),

@@ -23,7 +23,7 @@ Finding mode is default: write under `findings/` in the active target workspace.
 
 - Do not add, remove, or reorder finding sections or frontmatter keys.
 - Do not add, remove, or reorder component index columns.
-- No finding README when evidence cannot reach a verdict the active workflow allows.
+- No finding README when the evidence supports no verdict in `references/findings/finding-rules.md`.
 - Do not repeat general preconditions inside a primitive subsection.
 - No separate `Evidence` section or paragraph.
 - No `: ` inside a frontmatter value.

@@ -2,7 +2,7 @@
 
 One component folder per target component. Use one consistent component identifier from the user or existing output.
 
-Inside the component folder: one `dd-mm-yyyy` folder for the current day. Inside it: one folder per weakness, named with the lowercase CWE id from `../cwes.txt`, for example `cwe-79`. Inside that: one lowercase `snake_case` folder per finding. The folder name identifies the concrete trigger or primitive.
+Inside the component folder: one `dd-mm-yyyy` folder for the day the record is first created. Inside it: one folder per weakness, named with the lowercase CWE id from `../cwes.txt`, for example `cwe-79`. Inside that: one lowercase `snake_case` folder per finding. The folder name identifies the concrete trigger or primitive. A verdict change edits the record in place: never move or copy it to a new date folder.
 
 One finding lives at `findings/<component>/<dd-mm-yyyy>/<cwe_id>/<finding_name>/README.md`.
 
@@ -24,17 +24,30 @@ Allowed values by verdict:
 | `static-true-dynamic-pending` | `low`, `medium`, `high`, `critical`, `unknown` | consequence description | `yes`, `timing/race`, `unknown` |
 | `confirmed` | `low`, `medium`, `high`, `critical`, `unknown` | consequence description | `yes`, `timing/race`, `unknown` |
 
+### severity
+
+Pick the row that matches the impact the evidence establishes:
+
+| severity | impact |
+|---|---|
+| `critical` | code execution, privilege escalation, or authentication bypass that needs no prior privilege and no user interaction |
+| `high` | the `critical` impacts when they need prior privilege or user interaction; read or write of sensitive data across a trust boundary |
+| `medium` | denial of service; limited disclosure or tampering |
+| `low` | any other security impact with narrow reach |
+
+Set `unknown` when the evidence establishes the impact but not the privilege or interaction it needs.
+
 ### deterministic
 
 - `yes`: the stated path reaches the primitive under the stated preconditions, with no dependence on timing, scheduler interleaving, a race condition, memory layout, or a random value.
 - `timing/race`: a necessary step depends on timing, scheduler interleaving, a race condition, or another run-dependent condition.
 - `unknown`: evidence does not establish the trigger type.
 
-The value covers the full stated path to the reported impact. One non-deterministic necessary primitive makes it `timing/race`. Full finding: state the exact condition in `Attacker Model` and the exact interleaving in `Triggering Steps`. `static-unknown` candidate: state the condition in `Evidence Reviewed`.
+The value covers the full stated path to the reported impact. One non-deterministic necessary primitive makes it `timing/race`. For `timing/race`, state the exact condition in `Attacker Model` and the exact interleaving in `Triggering Steps`; a `static-unknown` candidate states the condition in `Evidence Reviewed`.
 
 ### verdict
 
-Allowed transitions only: `static-true-dynamic-pending` to `confirmed` or `dynamic-false`; `static-unknown` to `static-true-dynamic-pending` or `static-false`. The current workflow assigns only the verdicts its analysis mode allows. A static workflow assigns `static-false`, `static-true-dynamic-pending`, and `static-unknown`.
+Allowed transitions only: `static-true-dynamic-pending` to `confirmed` or `dynamic-false`; `static-unknown` to `static-true-dynamic-pending` or `static-false`; `static-false` to `static-true-dynamic-pending` or `confirmed` when new evidence refutes the condition that stopped the path. `confirmed` and `dynamic-false` need execution evidence cited in the report: command, input, observed output. Without it, assign only `static-false`, `static-true-dynamic-pending`, or `static-unknown`.
 
 - `static-false`: static evidence refutes reachability, material attacker control, or security impact.
 - `static-true-dynamic-pending`: static evidence establishes all three; dynamic evidence absent, incomplete, or inconclusive.
@@ -92,7 +105,7 @@ Each primitive also states:
 - evidence that establishes the capability
 - security impact: affected boundary, privilege, data, process, resource, or execution state. An abnormal value or crash alone is not impact.
 
-Evidence blocks the path before any primitive: use `Blocked path`. Show the established steps and the decisive stopping condition. Say whether a code step or a deployment precondition stops it. Never use it when an immediate primitive exists.
+Evidence blocks the path before any primitive: replace every `### Primitive N` with one `### Blocked path` subsection. Show the established steps and the decisive stopping condition. Say whether a code step or a deployment precondition stops it. Never use it when an immediate primitive exists. Only `static-false` and `dynamic-false` findings use it.
 
 ### static-unknown profile
 
@@ -100,7 +113,7 @@ Evidence blocks the path before any primitive: use `Blocked path`. Show the esta
 
 ### Duplication Check
 
-Before drafting, read the component index and every finding in the same component with the same weakness, across all dates.
+Before drafting, read the component index and every finding in the same component, across all dates and all weaknesses. Overlapping CWEs (for example `CWE-119`, `CWE-122`, `CWE-787`) can name one flaw.
 
 Compare only with prior internal findings. For each one check concrete flaw, root-cause location, violated invariant, trigger conditions, reachable path, and primitive.
 

@@ -63,8 +63,10 @@ Impact:
 
 <impact, boundary>
 
-// (if the evidence blocks the path before any primitive)
-Blocked path:
+// (if the evidence blocks the path before any primitive, this subsection replaces every Primitive subsection)
+### Blocked path
+
+Triggering path:
 
 ```
 <attacker-model entrypoint or request> [execution condition, evidence locator]
