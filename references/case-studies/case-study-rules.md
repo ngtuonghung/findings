@@ -11,7 +11,7 @@ Read `case-study-template.md` before creating or changing a case-study README. T
 
 No verdict. All other finding rules stay in force, including the evidence contract and hard constraints. Each primitive in `Triggering Steps` gives reproduction steps, triggering call path, and `Impact:` as the finding rules require.
 
-`The Patch`: cite the patch locator (commit, release, or diff). Show the decisive diff in a code block. Explain each changed part and how the fix removes the root cause stated in `Root Cause`. No patch: write exactly `No patch identified for this case study.`, then list the sources you checked.
+`The Patch`: cite the patch locator (commit, release, or diff). Show the decisive diff in a code block. Explain each changed part and how the fix removes the root cause stated in `Root Cause`. No patch: write this exact sentence: `No patch identified for this case study.` Then list the sources you checked.
 
 ### Case-study index
 

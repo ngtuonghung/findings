@@ -39,7 +39,7 @@ Set `unknown` when the evidence establishes the impact but not the privilege or 
 
 ### deterministic
 
-- `yes`: the stated path reaches the primitive under the stated preconditions, with no dependence on timing, scheduler interleaving, a race condition, memory layout, or a random value.
+- `yes`: the stated path reaches the primitive under the stated preconditions. No step depends on timing, scheduler interleaving, a race condition, memory layout, or a random value.
 - `timing/race`: a necessary step depends on timing, scheduler interleaving, a race condition, or another run-dependent condition.
 - `unknown`: evidence does not establish the trigger type.
 
@@ -89,7 +89,7 @@ State only primitive-specific preconditions. Different entrypoint, access method
 
 Each primitive gives reproduction steps, for a reader in the attacker-model position, and the triggering call chain.
 
-Call chain starts at the attacker-model entrypoint (first point that accepts the input) and ends at the operation that creates the primitive (bug location). Show the full chain from source or pseudo code as an indented call tree. Name every caller and callee in call order. Never skip an intermediate function. Evidence refutes a required step: stop there.
+Call chain starts at the attacker-model entrypoint: the first point that accepts the input. It ends at the operation that creates the primitive: the bug location. Show the full chain from source or pseudo code as an indented call tree. Name every caller and callee in call order. Never skip an intermediate function. Evidence refutes a required step: stop there.
 
 State the execution condition for every edge. Track attacker-controlled data through each transformation, copy, cast, field extraction, and reassignment. State who controls the data after each material transformation.
 
@@ -109,7 +109,7 @@ Evidence blocks the path before any primitive: replace every `### Primitive N` w
 
 ### static-unknown profile
 
-`Evidence Reviewed` lists each exact locator and the facts it establishes. `Open Questions` is a numbered list. Each item gives the exact question (phrased as a question), the evidence locator that answers it, and the next static route. No uncertainty word or status label. `Open Questions` is the only place this profile states missing target evidence. Never infer `severity` or `impact` from the weakness alone.
+`Evidence Reviewed` lists each exact locator and the facts it establishes. `Open Questions` is a numbered list. Each item has three parts: the exact question, ending in `?`; the evidence locator that answers it; the next static route. No uncertainty word or status label. `Open Questions` is the only place this profile states missing target evidence. Never infer `severity` or `impact` from the weakness alone.
 
 ### Duplication Check
 
